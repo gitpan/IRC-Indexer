@@ -1,5 +1,5 @@
 package IRC::Indexer;
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 ## stub! for now ..
 
@@ -76,9 +76,6 @@ and is presented as-is. We should maybe export a hash.
 
 =item *
 More useful examples in examples/
-
-=item *
-Tests are currently terrible.
 
 =back
 

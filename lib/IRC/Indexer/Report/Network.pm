@@ -1,6 +1,6 @@
 package IRC::Indexer::Report::Network;
 
-use 5.12.1;
+use 5.10.1;
 use strict;
 use warnings;
 use Carp;
@@ -155,7 +155,7 @@ IRC::Indexer::Report::Network - Network information class for IRC::Indexer
   );
   
   ## Get ::Report::Server object from finished trawl bot:
-  my $info_obj  = $trawler->info;
+  my $info_obj  = $trawler->report;
   ## Feed it to add_server:
   $network->add_server( $info_obj );
   

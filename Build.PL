@@ -6,6 +6,8 @@ my $build = Module::Build->new(
   dist_abstract => 'IRC network indexing system',
   dist_author   => 'Jon Portnoy <avenj@cobaltirc.org>',
   license => 'perl',
+
+  recursive_test_files => 1,
   
   create_makefile_pl => 'small',
   create_readme => 1,
@@ -16,10 +18,11 @@ my $build = Module::Build->new(
   
   build_requires => {
     'Test::More' => 0,
+    'Test::Cmd'  => 0,
   },
   
   requires => {
-    'perl' => '5.12.1',
+    'perl' => '5.10.1',
     
     'Carp'         => 0,
     'POSIX'        => 0,
