@@ -3,6 +3,9 @@ use strict;
 use warnings;
 
 ## Need GD::Graph3d for this.
+##  (Which happens to throw a bad test on every machine I've tried,
+##  but always runs perfectly anyway, so I haven't cared enough to look 
+##  any deeper at it.)
 
 ## Simplistic cron-able example of json-server usage.
 ##
@@ -10,7 +13,7 @@ use warnings;
 ## (They're not useful until you have an actual data set, either)
 ## Really just meant as an example of how to use the server.
 ##
-## 1-hr crontab:
+## Here's a 1-hr crontab entry (on the :30):
 ##  30 * * * * /path/to/chart_users_cron.pl
 ##
 ## When run, grab the network users and channels count.
@@ -62,20 +65,20 @@ FETCH: {
   if ($response->is_success) {
     my $zipped = $response->content;
 
-    ## Should've gotten gzip back.    
+    ## Should've gotten gzipped JSON back.
     die "Unknown content-type: ".$response->content_type
       unless $response->content_type eq 'application/x-gzip';
-    
     my $json    = memGunzip($zipped);
     my $netinfo = decode_json($json);
     
     my $user_count = $netinfo->{GlobalUsers} // 0;
-    my $time = join ':', localtime->hour, localtime->min;
+    my $t = localtime->hms;
+    my $time = join ':', (split /:/, $t)[0,1];
   
     push(@{ $graphset->[0] }, $time);
     push(@{ $graphset->[1] }, $user_count);
     
-    ## Keep only 12 runs worth of data.
+    ## Keep only 12 runs worth of data:
     if (@{ $graphset->[0] } > 12) {
       shift @{ $graphset->[0] };
       shift @{ $graphset->[1] };
@@ -87,6 +90,7 @@ FETCH: {
       or die $!;
     print $fh $graphset_json;
     close $fh;
+
   } else {
     
     ## If this is a 404, status line from server tells us why.
@@ -98,8 +102,6 @@ FETCH: {
         warn "Server appears not to know network $network\n";
         die "Server said: $line\n";
       } elsif ($line =~ /^PENDING/) {
-        ## Server says network is pending a run.
-        ## Sleep for 10s and try once more.
         if ($retried) {
           die "Network marked PENDING twice in a row, giving up.\n"
         } else {
@@ -125,20 +127,26 @@ FETCH: {
 ## This is braindead:
 my $user_set = $graphset->[1];
 my $max = 100;
-map { $max = $_ if $_ > $max } @$user_set;
 my $min = 50;
-map { $min = $_ if $_ < $min } @$user_set;
+use POSIX ();
+map { $max = (POSIX::ceil($_ /25) * 25)+25  if $_ > $max } @$user_set;
+map { $min = (POSIX::floor($_ /25) * 25) if $_ < $min } @$user_set;
+
+## GD::Graph does a great many things.
+##  ... most of them I haven't actually looked at myself.
+## See:  perldoc GD::Graph
+## This should be enough to start with:
 
 my $graph = GD::Graph::lines3d->new(600, 300);
 $graph->set(
   x_ticks => 5,
   x_label => 'Trawl Time',
+  x_label_position => "1/2",
   y_label => 'Network Users',
-  title   => "Users, last 12 runs",
+  title   => "Users",
   y_min_value   => $min,
   y_max_value   => $max,
   y_tick_number => 10,
-  y_label_skip  => 10,
 ) or die $graph->error;
 
 my $gd = $graph->plot($graphset)
