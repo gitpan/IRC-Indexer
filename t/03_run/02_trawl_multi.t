@@ -29,6 +29,8 @@ $SIG{ALRM} = 'timeout';
 
 alarm 10;
 
+diag("Trawl::Multi run, 2s timeout");
+
 $multi->run;
 POE::Kernel->run;
 

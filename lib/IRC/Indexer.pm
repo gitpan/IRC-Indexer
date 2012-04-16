@@ -1,5 +1,5 @@
 package IRC::Indexer;
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 ## stub! for now ..
 
@@ -40,12 +40,12 @@ IRC::Indexer is a set of modules and utilities useful for trawling IRC
 networks, collecting information, and exporting it to portable formats 
 for use in Web frontends and other applications.
 
-L<ircindexer-server-json> serves as an example of how to use the trawler 
-system to index IRC networks; it is usable as-is to trawl sets of IRC 
-servers belonging to configured networks and serve JSON-serialized 
+L<ircindexer-server-json> serves as a real world example of how to use 
+the trawler system to index IRC networks; it is usable as-is to trawl 
+sets of IRC servers belonging to configured networks and serve JSON-serialized 
 network stats via HTTP.
 
-L<ircindexer-server-json> "should be" fairly scalable; this could be 
+L<ircindexer-server-json> is fairly scalable; this could be 
 used directly to build an IRC trawling/indexing Web application in a 
 language of your choice, for example (or just grab data at intervals 
 and spit out some graphs for a network or two, see B<examples/> in the 
@@ -78,14 +78,6 @@ and is presented as-is. We should maybe export a hash.
 More useful examples in examples/
 
 =back
-
-=head1 BUGS
-
-Frankly, the fundamentals of this project were laid out on a hungover 
-Saturday morning. It hasn't been tested on very many different IRCDs; 
-there are probably things broken I'm not aware of.
-
-Bugs can be emailed directly, if you like -- see L</AUTHOR>.
 
 =head1 AUTHOR
 
