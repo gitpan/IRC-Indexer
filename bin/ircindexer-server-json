@@ -49,15 +49,20 @@ my $opts = {
       "  -c, --config=PATH\n",
       "       Configuration file for this server.\n\n",
       
-      "  -l, --loglevel=LEVEL\n",
-      "      Log verbosity, one of: debug, info, warn\n",
-      "      Overrides configuration file.\n\n",
-      
       "  -d, --detach\n",
       "       Run as a daemon process.\n\n",
       
+      "  -p, --pidfile\n",
+      "       Write our PID to the specified path.\n",
+      "       Overrides configuration file.\n\n",
+
+      "  -l, --loglevel=LEVEL\n",
+      "       Log verbosity, one of: debug, info, warn\n",
+      "       Overrides configuration file.\n\n",      
+      
       "  -i, --interval=SECS\n",
       "       Interval between trawling servers on a specific network.\n",
+      "       Overrides configuration file.\n",
       "       Defaults to 600 seconds (10 minutes)\n",
     );
     exit 0
@@ -85,10 +90,12 @@ GetOptions( $opts,
     config=s
     
     detach!
-
-    interval=i
     
+    pidfile=s
+
     loglevel=s
+
+    interval=i   
     
     showsource
   /,
@@ -132,8 +139,12 @@ my $cfg = {
   NetworkDir => undef,
   BindAddr   => '0.0.0.0',
   ServerPort => 8700,
-  CacheDir   => undef,
   ListChans  => undef,
+  
+  CacheDir   => undef,
+  PidFile    => undef,
+
+  TrawlInterval => 600,
 
   Forking => 0,
   MaxEncoders => 20,
@@ -158,6 +169,7 @@ my $ArrayConf = { };
 my $jsmemcache = { };
 
 sub get_nets {
+  ## Called out of either get_cfg() or a rehash.
   my $conf_obj = $obj->{Cfg};
 
   die "Configuration directive missing: NetworkDir\n"
@@ -168,7 +180,8 @@ sub get_nets {
 }
 
 sub get_cfg {
-  ## set up $cfg, networks, and logging
+  ## Set up $cfg, networks, and logging
+  ## Called out of start_indexer()
   
   die "No --config specified.\n" unless $opts->{config};
   
@@ -264,6 +277,7 @@ sub log_to {
 }
 
 sub poco_cfg_httpd {
+  ## Called out of _start
   $state->{htevents} = [ map { 'h_'.$_ } qw/
      error_404
      src
@@ -307,7 +321,8 @@ sub poco_cfg_httpd {
 }
 
 sub poco_init_session {
-  ## create 'indexerhttp' session
+  ## Create 'indexerhttp' session
+  ## Called out of start_indexer()
   POE::Session->create(
     package_states => [
       main => [ qw/
@@ -353,18 +368,57 @@ sub _start {
   log_to('session', 'info', 'Session started');
 
   ## init httpd
-  my @htstates = poco_cfg_httpd();
+  poco_cfg_httpd();
 
-  $kernel->call( $_[SESSION], 'e_init_nets' );
+  $kernel->post( $_[SESSION], 'e_init_nets' );
   
   ## add states from $state->{htevents}
   $kernel->state($_, __PACKAGE__) for @{$state->{htevents}};  
 }
 
+sub _stop {  
+  log_to('session', 'warn', "_stop received");
+  
+  ## Run some cleanup if needed.
+  
+  for my $pidof (keys %{ $obj->{workers_by_pid} }) {
+    my $wheel = delete $obj->{workers_by_pid}->{$pidof};
+    next unless ref $wheel;
+    my $wid   = $wheel->ID;
+    delete $obj->{workers_by_wid}->{$wid};
+    $wheel->kill(9);
+  }
+  
+  if ($state->{openDB}) {
+    for my $network (keys %{ $state->{openDB} }) {
+      db_close($network);
+    }
+  }
+
+  if ($state->{wrote_pid_file}) {
+    unlink($state->{wrote_pid_file})
+      or warn "could not clean up pidfile: $!";
+  }
+
+  ## HTTP server should pick up shutdown and clean up.
+  $_[KERNEL]->signal( $_[KERNEL], 'shutdown' );
+}
+
+sub session_sig_hup {
+  log_to('session', 'warn', 'SIGHUP, reloading');
+  $_[KERNEL]->sig_handled();
+  $_[KERNEL]->call( $_[SESSION], 'e_rehash');
+}
+
+sub session_sig_int {
+  warn "Exiting due to signal";
+  $_[KERNEL]->yield('_stop');
+}
+
 sub e_init_nets {
   my ($kernel, $heap) = @_[KERNEL, HEAP];
 
-  ## called by either _start or e_rehash
+  ## Called by _start & rehash.
   
   ## clear configured trawlers in $ArrayConf
   $ArrayConf = { };
@@ -379,8 +433,8 @@ sub e_init_nets {
       
       log_to('irc', 'info', "Init trawler: $network -> $server");
 
-      ## push configuration to array
-      ## create_trawler in e_trawler_run     
+      ## Push configuration to array
+      ## we'll create_trawler() in e_trawler_run
       my %trawlopts = %$this_cf;
       push(@{$ArrayConf->{$network}}, 
         [ $network, $server, { Server => $server, %trawlopts } ]
@@ -441,39 +495,6 @@ sub e_rehash {
   $kernel->call( $_[SESSION], 'e_init_nets');
 }
 
-sub session_sig_hup {
-  log_to('session', 'warn', 'SIGHUP, reloading');
-  $_[KERNEL]->sig_handled();
-  $_[KERNEL]->call( $_[SESSION], 'e_rehash');
-}
-
-sub session_sig_int {
-  warn "Exiting due to signal";
-  $_[KERNEL]->yield('_stop');
-}
-
-
-sub _stop {
-  ## Run some cleanup if needed.
-  for my $pidof (keys %{ $obj->{workers_by_pid} }) {
-    my $wheel = delete $obj->{workers_by_pid}->{$pidof};
-    next unless ref $wheel;
-    my $wid   = $wheel->ID;
-    delete $obj->{workers_by_wid}->{$wid};
-    $wheel->kill(9);
-  }
-  
-  if ($state->{openDB}) {
-    for my $network (keys %{ $state->{openDB} }) {
-      db_close($network);
-    }
-  }
-  log_to('session', 'warn', "_stop received");
-
-  ## HTTP server should pick up shutdown and clean up.
-  $_[KERNEL]->signal( $_[KERNEL], 'shutdown' );
-}
-
 sub e_timer_chk {
   my ($kernel, $heap) = @_[KERNEL, HEAP];
   my $state_run = $state->{hasrun};
@@ -481,6 +502,19 @@ sub e_timer_chk {
   ++$state->{stats}->{LoopTick};
   
   my @trawlers;
+
+  ## PID write is here so we can fail out properly if HTTPd can't start:
+  unless ($state->{wrote_pid}) {
+    my $pidfile = $opts->{pidfile} || $cfg->{PidFile} || undef;
+    if ($pidfile) {
+      open my $fh, '>', $pidfile
+        or die "PID file specified but unable to write: $pidfile: $!";
+      print $fh $$;
+      close $fh;
+    }
+    ++$state->{wrote_pid};
+    $state->{wrote_pid_path} = $pidfile;
+  }
 
   my $sp = 0;
   NETWORK: for my $network (keys %$ArrayConf) {
@@ -516,7 +550,8 @@ sub e_timer_chk {
       ## Schedule the next one for this net to run in ten minutes.
       my $next_trawler = $ArrayConf->{$network}->[0];
       if (defined $next_trawler) {
-        my $next_run_at  = time + ($opts->{interval} || 600);
+        my $interval = $opts->{interval} || $cfg->{TrawlInterval} || 600;
+        my $next_run_at  = time + $interval;
         $kernel->alarm_add(
           'e_trawler_run', $next_run_at, $next_trawler
         );

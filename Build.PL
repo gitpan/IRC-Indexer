@@ -23,15 +23,17 @@ my $build = Module::Build->new(
   
   requires => {
     'perl' => '5.10.1',
-    
+
+    'Config'       => 0,   
     'Carp'         => 0,
     'POSIX'        => 0,
+    'Fcntl'        => 0,
     'Getopt::Long' => 0,
     'Scalar::Util' => 0,
     'Digest::SHA'  => 0,
     
     'File::Find' => 0,
-    'File::Path' => 0,
+    'File::Path' => '2.00',
     'File::Spec' => 0,
     
     'Time::HiRes' => 0,
@@ -43,7 +45,7 @@ my $build = Module::Build->new(
     'POE' => '1.311',
 
    ## IRC
-    'IRC::Utils' => 0,
+    'IRC::Utils' => '0.11',
     'POE::Component::IRC' => '6.74',
 
    ## HTTP
